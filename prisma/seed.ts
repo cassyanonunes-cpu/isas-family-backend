@@ -15,10 +15,10 @@ async function main() {
 
   // Cria a primeira família
   const family = await prisma.family.create({
-    data: { name: 'Minha Família (Admin)' }
+    data: { name: 'Minha Família' }
   });
 
-  // Cria o primeiro usuário administrador
+  // Cria um usuário Administrador inicial nos bastidores (necessário para criar o convite)
   const hash = await bcrypt.hash('123456', 10);
   const admin = await prisma.user.create({
     data: {
@@ -31,14 +31,29 @@ async function main() {
     }
   });
 
+  // Cria um código de convite mestre para o primeiro acesso no app
+  const crypto = require('crypto');
+  const token = crypto.randomBytes(4).toString('hex').toUpperCase();
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 30); // 30 dias
+
+  const invitation = await prisma.invitation.create({
+    data: {
+      familyId: family.id,
+      createdBy: admin.id,
+      code: token,
+      status: 'PENDING',
+      expiresAt
+    }
+  });
+
   console.log('✅ Seed finalizado com sucesso!');
   console.log('--------------------------------------------------');
   console.log('Família criada:', family.name);
-  console.log('Usuário Admin criado:');
-  console.log('Email:', admin.email);
-  console.log('Senha: 123456');
+  console.log('SEU CÓDIGO DE CONVITE INICIAL É:');
+  console.log(`\n    ====>  ${token}  <====\n`);
+  console.log('Abra o aplicativo e cole este código para entrar na conta!');
   console.log('--------------------------------------------------');
-  console.log('IMPORTANTE: Altere a senha logo após o primeiro login!');
 }
 
 main()
