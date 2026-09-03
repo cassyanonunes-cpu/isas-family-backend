@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Family {
+  id            String         @id @default(uuid())
+  name          String
+  createdAt     DateTime       @default(now())
+  users         User[]
+  invitations   Invitation[]
+  conversations Conversation[]
+  calls         Call[]
+}
+
+model User {
+  id              String               @id @default(uuid())
+  familyId        String
+  family          Family               @relation(fields: [familyId], references: [id])
+  role            String               @default("MEMBER") // ADMIN, MEMBER
+  isSharingLocation Boolean            @default(false)
+  name            String
+  displayName     String
+  email           String               @unique
+  password        String
+  status          String?
+  lastSeen        DateTime?
+  isOnline        Boolean              @default(false)
+  notificationPreview Boolean          @default(true)
+  themePreference String               @default("SYSTEM")
+  avatarUrl       String?
+  birthday        DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  devices         Device[]
+  refreshTokens   RefreshToken[]
+  sentMessages    Message[]
+  memberships     ConversationMember[]
+  locations       Location[]
+  callsMade       Call[]               @relation("Caller")
+  callsReceived   Call[]               @relation("Callee")
+  messageReceipts MessageReceipt[]
+}
+
+model Device {
+  id          String     @id @default(uuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id])
+  pushToken   String?
+  voipToken   String?
+  platform    String     // IOS, ANDROID
+  identifier  String?    // UUID do aparelho para evitar duplicidade
+  lastAccess  DateTime   @default(now())
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+}
+
+model Invitation {
+  id          String   @id @default(uuid())
+  familyId    String
+  family      Family   @relation(fields: [familyId], references: [id])
+  createdBy   String
+  code        String   @unique
+  status      String   @default("PENDING") // PENDING, ACCEPTED, EXPIRED, CANCELLED
+  expiresAt   DateTime
+  usedById    String?
+  usedAt      DateTime?
+  createdAt   DateTime @default(now())
+}
+
+model Conversation {
+  id          String               @id @default(uuid())
+  familyId    String
+  family      Family               @relation(fields: [familyId], references: [id])
+  type        String               // DIRECT, GROUP
+  name        String?              // Utilizado para grupos
+  avatarUrl   String?              // Utilizado para grupos
+  description String?              // Utilizado para grupos
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  members     ConversationMember[]
+  messages    Message[]
+}
+
+model ConversationMember {
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  role           String       @default("MEMBER") // ADMIN, MEMBER
+  joinedAt       DateTime     @default(now())
+
+  @@id([conversationId, userId])
+}
+
+model Message {
+  id             String        @id @default(uuid())
+  clientMessageId String?      @unique // Utilizado para idempotência
+  conversationId String
+  conversation   Conversation  @relation(fields: [conversationId], references: [id])
+  senderId       String
+  sender         User          @relation(fields: [senderId], references: [id])
+  type           String        @default("TEXT") // TEXT, IMAGE, VIDEO, AUDIO, DOCUMENT
+  content        String
+  status         String        @default("SENT") // SENT, DELIVERED, READ
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  attachment     MessageAttachment?
+  receipts       MessageReceipt[]
+}
+
+model MessageReceipt {
+  messageId String
+  userId    String
+  status    String   // DELIVERED, READ
+  updatedAt DateTime @default(now())
+
+  message   Message @relation(fields: [messageId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@id([messageId, userId])
+}
+
+model MessageAttachment {
+  id          String   @id @default(uuid())
+  messageId   String   @unique
+  message     Message  @relation(fields: [messageId], references: [id])
+  type        String   // IMAGE, VIDEO, AUDIO, DOCUMENT
+  storageKey  String
+  mimeType    String
+  originalName String
+  size        Int
+  width       Int?
+  height      Int?
+  duration    Int?     // duration in seconds or milliseconds
+  createdAt   DateTime @default(now())
+}
+
+model Location {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id])
+  familyId     String
+  latitude     Float
+  longitude    Float
+  accuracy     Float?
+  batteryLevel Float?
+  updatedAt    DateTime @updatedAt
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+}
+
+model Call {
+  id        String   @id @default(uuid())
+  familyId  String
+  family    Family   @relation(fields: [familyId], references: [id])
+  callerId  String
+  caller    User     @relation("Caller", fields: [callerId], references: [id])
+  calleeId  String
+  callee    User     @relation("Callee", fields: [calleeId], references: [id])
+  type      String   // VOICE, VIDEO
+  status    String   @default("RINGING") // RINGING, ANSWERED, DECLINED, MISSED, ENDED, FAILED
+  startedAt DateTime @default(now())
+  answeredAt DateTime?
+  endedAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
