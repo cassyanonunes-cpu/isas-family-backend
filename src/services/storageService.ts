@@ -1,44 +1,45 @@
 import fs from 'fs';
 import path from 'path';
+import prisma from '../utils/prisma';
 
 export interface StorageService {
   uploadFile(file: Express.Multer.File): Promise<string>;
-  getFileStream(storageKey: string): fs.ReadStream;
-  getFilePath(storageKey: string): string;
+  getFileData(storageKey: string): Promise<Buffer | null>;
+  getFilePath(storageKey: string): string; // Retido para retrocompatibilidade
 }
 
-export class LocalStorageService implements StorageService {
-  private uploadDir: string;
-
-  constructor() {
-    this.uploadDir = path.join(__dirname, '../../uploads');
-    if (!fs.existsSync(this.uploadDir)) {
-      fs.mkdirSync(this.uploadDir, { recursive: true });
-    }
-  }
-
+export class DatabaseStorageService implements StorageService {
   async uploadFile(file: Express.Multer.File): Promise<string> {
     const ext = path.extname(file.originalname);
-    const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
-    const destinationPath = path.join(this.uploadDir, fileName);
+    const storageKey = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+    
+    // Lê o arquivo do disco temporário (onde o multer salvou)
+    const fileBuffer = fs.readFileSync(file.path);
+    
+    // Salva o Buffer no banco de dados Prisma
+    await prisma.fileData.create({
+      data: {
+        storageKey,
+        data: fileBuffer
+      }
+    });
 
-    // Mover o arquivo (multer salva em temp)
-    fs.renameSync(file.path, destinationPath);
-    return fileName;
+    // Remove o arquivo temporário
+    try { fs.unlinkSync(file.path); } catch (e) {}
+
+    return storageKey;
   }
 
-  getFileStream(storageKey: string): fs.ReadStream {
-    const filePath = this.getFilePath(storageKey);
-    if (!fs.existsSync(filePath)) {
-      throw new Error('Arquivo não encontrado no disco.');
-    }
-    return fs.createReadStream(filePath);
+  async getFileData(storageKey: string): Promise<Buffer | null> {
+    const file = await prisma.fileData.findUnique({
+      where: { storageKey }
+    });
+    return file ? file.data : null;
   }
 
   getFilePath(storageKey: string): string {
-    return path.join(this.uploadDir, storageKey);
+    throw new Error('getFilePath não é suportado no DatabaseStorageService.');
   }
 }
 
-// Singleton export para facilitar injeção futura
-export const storageService: StorageService = new LocalStorageService();
+export const storageService: StorageService = new DatabaseStorageService();

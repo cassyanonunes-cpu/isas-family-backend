@@ -552,8 +552,15 @@ export const downloadAttachment = async (req: AuthRequest, res: Response): Promi
       return;
     }
 
-    const filePath = storageService.getFilePath(attachment.storageKey);
-    res.download(filePath, attachment.originalName);
+    const fileData = await storageService.getFileData(attachment.storageKey);
+    if (!fileData) {
+      res.status(404).json({ error: 'Dados do arquivo não encontrados no armazenamento' });
+      return;
+    }
+
+    res.setHeader('Content-Type', attachment.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${attachment.originalName}"`);
+    res.send(fileData);
   } catch (error) {
     console.error('Erro ao baixar anexo:', error);
     res.status(500).json({ error: 'Erro no servidor' });

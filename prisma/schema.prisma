@@ -140,6 +140,13 @@ model MessageAttachment {
   createdAt   DateTime @default(now())
 }
 
+model FileData {
+  id         String   @id @default(uuid())
+  storageKey String   @unique
+  data       Bytes
+  createdAt  DateTime @default(now())
+}
+
 model Location {
   id           String   @id @default(uuid())
   userId       String   @unique
