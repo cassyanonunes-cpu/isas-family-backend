@@ -13,7 +13,8 @@ export const createInvitation = async (req: AuthRequest, res: Response): Promise
   }
 
   try {
-    const token = crypto.randomBytes(32).toString('hex');
+    // Gera um código alfanumérico curto de 6 caracteres (mais fácil de digitar e copiar)
+    const token = crypto.randomBytes(3).toString('hex').toUpperCase();
     const daysToExpire = parseInt(process.env.INVITE_EXPIRATION_DAYS || '7', 10);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + daysToExpire);
