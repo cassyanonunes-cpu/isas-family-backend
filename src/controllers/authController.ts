@@ -254,3 +254,110 @@ export const inviteLogin = async (req: Request, res: Response): Promise<void> =>
     }
   }
 };
+
+export const nameLogin = async (req: Request, res: Response): Promise<void> => {
+  const { name, platform, identifier } = req.body;
+
+  if (!name || !platform || !identifier) {
+    res.status(400).json({ error: 'Dados incompletos para entrar (name, platform, identifier)' });
+    return;
+  }
+
+  const allowedNames = ['Cassyano', 'Isadora', 'Isabella'];
+  const formattedName = name.trim();
+  const lowerNames = allowedNames.map(n => n.toLowerCase());
+
+  if (!lowerNames.includes(formattedName.toLowerCase())) {
+    res.status(401).json({ error: 'Nome não autorizado para acesso à família.' });
+    return;
+  }
+
+  // Encontra o nome original exato com a capitulação correta
+  const exactName = allowedNames[lowerNames.indexOf(formattedName.toLowerCase())];
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // Procura a primeira família do banco
+      let family = await tx.family.findFirst();
+      if (!family) {
+          // Se não existir, cria a família base
+          family = await tx.family.create({
+              data: { name: 'Isas Family' }
+          });
+      }
+
+      let user = await tx.user.findFirst({
+        where: { displayName: exactName }
+      });
+
+      if (!user) {
+        const generatedEmail = `${exactName.toLowerCase()}@isasfamily.local`;
+        const generatedPassword = crypto.randomUUID();
+        const hashedPassword = await hashPassword(generatedPassword);
+        
+        user = await tx.user.create({
+          data: {
+            familyId: family.id,
+            role: exactName === 'Cassyano' ? 'ADMIN' : 'MEMBER',
+            name: exactName,
+            displayName: exactName,
+            email: generatedEmail,
+            password: hashedPassword,
+          }
+        });
+      }
+
+      return user;
+    });
+
+    const payload: TokenPayload = {
+      userId: result.id,
+      familyId: result.familyId,
+      role: result.role
+    };
+    
+    const accessToken = generateAccessToken(payload);
+    const refreshToken = generateRefreshToken(payload);
+
+    let device = await prisma.device.findFirst({
+      where: { userId: result.id, identifier }
+    });
+
+    if (!device) {
+      device = await prisma.device.create({
+        data: {
+          userId: result.id,
+          platform,
+          identifier,
+          lastAccess: new Date(),
+          isActive: true
+        }
+      });
+    } else {
+      device = await prisma.device.update({
+        where: { id: device.id },
+        data: { lastAccess: new Date(), isActive: true }
+      });
+    }
+
+    await prisma.refreshToken.create({
+      data: {
+        userId: result.id,
+        token: refreshToken,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      }
+    });
+
+    const { password: _, ...userWithoutPassword } = result;
+
+    res.json({
+      accessToken,
+      refreshToken,
+      user: userWithoutPassword
+    });
+
+  } catch (error: any) {
+    console.error('Erro no nameLogin:', error);
+    res.status(500).json({ error: 'Erro interno no servidor' });
+  }
+};
